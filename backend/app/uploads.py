@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from pathlib import Path
 
@@ -14,7 +15,12 @@ ALLOWED = {
     "image/webp": ".webp",
 }
 
-UPLOAD_DIR = Path(__file__).resolve().parents[1] / "uploads"
+if os.getenv("VERCEL") == "1":
+    # Vercel Functions have a read-only app bundle; /tmp is writable but
+    # temporary, so persistent uploads should use object storage.
+    UPLOAD_DIR = Path("/tmp/hillguard-uploads")
+else:
+    UPLOAD_DIR = Path(__file__).resolve().parents[1] / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 

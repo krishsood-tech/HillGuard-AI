@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -14,10 +15,12 @@ from .seed import seed_if_empty
 from .uploads import UPLOAD_DIR
 
 BACKEND = Path(__file__).resolve().parents[1]
-(BACKEND / "data").mkdir(parents=True, exist_ok=True)
-(BACKEND / "uploads").mkdir(parents=True, exist_ok=True)
-
 settings = get_settings()
+if settings.database_url.startswith("sqlite"):
+    if os.getenv("VERCEL") == "1":
+        raise RuntimeError("Set DATABASE_URL to the Neon PostgreSQL connection string in Vercel.")
+    (BACKEND / "data").mkdir(parents=True, exist_ok=True)
+
 Base.metadata.create_all(bind=engine)
 with SessionLocal() as db:
     seed_if_empty(db)
