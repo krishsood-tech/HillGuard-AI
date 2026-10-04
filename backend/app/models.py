@@ -25,7 +25,11 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    incidents = relationship("Incident", back_populates="submitter")
+    incidents = relationship(
+    "Incident",
+    back_populates="submitter",
+    foreign_keys="Incident.submitter_id",
+)
 
 
 class Incident(Base):

@@ -116,7 +116,10 @@ export default function Report() {
           </form>
           <div className="map-wrap" style={{ height: 360, marginTop: 12 }}>
             <MapContainer center={[lat, lng]} zoom={10} style={{ height: "100%" }}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution="© OSM © CARTO" />
+             <TileLayer
+  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+/>
               <CircleMarker center={[lat, lng]} radius={10} pathOptions={{ color: "#d62828" }} />
               <ClickCapture onPick={(a, b) => { setLat(a); setLng(b); }} />
             </MapContainer>

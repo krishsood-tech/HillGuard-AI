@@ -3,7 +3,7 @@ import { CircleMarker, MapContainer, Marker, Popup, TileLayer, Polyline, useMap 
 import L from "leaflet";
 import { CATEGORY_META, Incident, timeAgo } from "../api";
 
-const DEFAULT_TILE = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const DEFAULT_TILE = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 function pinIcon(color: string) {
   return L.divIcon({
@@ -76,7 +76,7 @@ export default function MapView({
     <div className="map-wrap" role="region" aria-label="Live hazard map of Himachal Pradesh">
       <MapContainer center={start} zoom={8} style={{ height: "100%", width: "100%" }} aria-label="Interactive map">
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; CARTO'
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url={tileUrl || DEFAULT_TILE}
         />
         {flyTo && <FlyTo lat={flyTo.lat} lng={flyTo.lng} />}

@@ -1,33 +1,102 @@
-    rec = ModelOutput(
-        latitude=body.latitude,
-        longitude=body.longitude,
-        target="area_risk",
-        category=out["risk_category"],
-        model_version=out["model_version"],
-        input_coverage=out["data_coverage"],
-        uncertainty=out["uncertainty"],
-        explanation_json=str(out["factors"]),
-        is_demo=True,
+from __future__ import annotations
+
+import json
+from collections import Counter
+from datetime import timedelta, timezone
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from ..database import get_db
+from ..geo import find_place, haversine_km, point_near_line
+from ..ml_service import analyze_risk, cluster_incidents
+from ..models import ExternalObservation, Incident, ModelOutput, Notification, utcnow
+from ..routing import build_route, geocode, list_places
+from ..schemas import RiskIn, RouteIn
+from ..weather import fetch_weather
+from .incidents import PUBLIC_STATUSES, serialize
+
+router = APIRouter(prefix="/api", tags=["services"])
+
+
+@router.get("/places")
+def places():
+    return {"items": list_places()}
+
+
+@router.get("/search")
+async def search(q: str, db: Session = Depends(get_db)):
+    place = find_place(q) or await geocode(q)
+    if not place:
+        return {"found": False, "place": None, "nearby": []}
+
+    lat, lng = float(place["lat"]), float(place["lng"])
+    rows = db.query(Incident).filter(Incident.verification_status.in_(PUBLIC_STATUSES)).all()
+    nearby = [serialize(i) for i in rows if haversine_km(lat, lng, i.latitude, i.longitude) <= 20]
+    weather = await fetch_weather(lat, lng)
+    values = weather.get("values") or {}
+    risk = analyze_risk(lat, lng, rows, values.get("rainfall_mm") if weather.get("available") else None)
+    return {"found": True, "place": place, "nearby": nearby, "weather": weather, "risk": risk}
+
+
+@router.get("/weather")
+async def weather(lat: float, lng: float):
+    return await fetch_weather(lat, lng)
+
+
+@router.post("/ai/risk")
+async def ai_risk(body: RiskIn, db: Session = Depends(get_db)):
+    rows = db.query(Incident).filter(Incident.verification_status.in_(PUBLIC_STATUSES)).all()
+    rainfall = body.rainfall_mm
+    if rainfall is None:
+        weather = await fetch_weather(body.latitude, body.longitude)
+        if weather.get("available"):
+            rainfall = (weather.get("values") or {}).get("rainfall_mm")
+
+    out = analyze_risk(body.latitude, body.longitude, rows, rainfall)
+    db.add(
+        ModelOutput(
+            latitude=body.latitude,
+            longitude=body.longitude,
+            target="area_risk",
+            category=out["risk_category"],
+            model_version=out["model_version"],
+            input_coverage=out["data_coverage"],
+            uncertainty=out["uncertainty"],
+            explanation_json=json.dumps(out["factors"]),
+            is_demo=True,
+        )
     )
-    db.add(rec)
     db.commit()
     return out
+
+
 @router.post("/ai/image-analysis")
 async def image_analysis():
     return {
         "message": "Upload an image with POST /api/incidents. Standalone analysis uses the demonstration triage service.",
         "mode": "demonstration",
     }
+
+
+@router.get("/clusters")
+def clusters(db: Session = Depends(get_db)):
+    return {"items": cluster_incidents(db.query(Incident).all())}
+
+
 @router.get("/analytics")
 def analytics(db: Session = Depends(get_db)):
     rows = db.query(Incident).filter(Incident.verification_status != "rejected").all()
     by_type = Counter(i.category for i in rows)
     by_status = Counter(i.verification_status for i in rows)
     cutoff = utcnow() - timedelta(hours=24)
-    last24 = [i for i in rows if i.observed_at and i.observed_at.replace(tzinfo=i.observed_at.tzinfo or None) and i.submitted_at >= cutoff]
-    # simpler last 24 based on submitted_at
-    last24 = [i for i in rows if i.submitted_at >= cutoff]
-    clusters = cluster_incidents(db.query(Incident).all())
+    last24 = [
+        i
+        for i in rows
+        if i.submitted_at
+        and i.submitted_at.replace(tzinfo=i.submitted_at.tzinfo or timezone.utc) >= cutoff
+    ]
+    cluster_count = len(cluster_incidents(db.query(Incident).all()))
     days = {}
     for i in rows:
         key = i.submitted_at.date().isoformat()
@@ -40,7 +109,7 @@ def analytics(db: Session = Depends(get_db)):
             "unverified": by_status.get("unverified", 0),
             "under_review": by_status.get("under_review", 0),
             "last_24h": len(last24),
-            "clusters": len(clusters),
+            "clusters": cluster_count,
             "ai_risk_areas": len({i.ai_risk_category for i in rows if i.ai_risk_category in {"Elevated", "Higher"}}),
             "weather_observations": weather_n or 1,
         },
@@ -49,6 +118,8 @@ def analytics(db: Session = Depends(get_db)):
         "over_time": [{"date": k, "count": days[k]} for k in sorted(days)],
         "density": [{"lat": i.latitude, "lng": i.longitude, "category": i.category} for i in rows],
     }
+
+
 @router.post("/routes/analyze")
 async def routes_analyze(body: RouteIn, db: Session = Depends(get_db)):
     route = await build_route(body.start, body.destination)
@@ -86,12 +157,16 @@ async def routes_analyze(body: RouteIn, db: Session = Depends(get_db)):
         "weather": weather,
         "risk": risk,
     }
+
+
 @router.get("/routes")
 def routes():
     return {
         "message": "POST /api/routes/analyze with start and destination.",
         "examples": [{"start": "Shimla", "destination": "Manali"}],
     }
+
+
 @router.get("/notifications")
 def notifications(db: Session = Depends(get_db)):
     rows = db.query(Notification).order_by(Notification.created_at.desc()).limit(30).all()
@@ -109,6 +184,8 @@ def notifications(db: Session = Depends(get_db)):
             for n in rows
         ]
     }
+
+
 @router.get("/sources")
 def sources():
     return {

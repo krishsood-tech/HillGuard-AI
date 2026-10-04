@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 720
     weather_api_key: str = ""
     weather_provider: str = "open-meteo"
-    map_tile_url: str = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+    map_tile_url: str = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
     routing_api_key: str = ""
     osrm_url: str = "https://router.project-osrm.org"
     frontend_origin: str = "http://localhost:5173"
