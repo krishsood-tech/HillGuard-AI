@@ -14,8 +14,19 @@ def _engine_kwargs(url: str) -> dict:
     return {"pool_pre_ping": True}
 
 
+def _sqlalchemy_url(url: str) -> str:
+    # Neon commonly supplies postgres:// or postgresql:// URLs. The project
+    # installs psycopg v3, so explicitly select that SQLAlchemy driver.
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
 settings = get_settings()
-engine = create_engine(settings.database_url, **_engine_kwargs(settings.database_url))
+database_url = _sqlalchemy_url(settings.database_url)
+engine = create_engine(database_url, **_engine_kwargs(database_url))
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
